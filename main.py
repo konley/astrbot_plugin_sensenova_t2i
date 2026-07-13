@@ -466,7 +466,10 @@ class SenseNovaT2IPlugin(Star):
     async def _download_image(url: str, path: str) -> bool:
         """异步下载图片到本地。"""
         try:
-            async with aiohttp.ClientSession() as session:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            }
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(
                     url, timeout=aiohttp.ClientTimeout(total=60)
                 ) as resp:
