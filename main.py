@@ -271,7 +271,7 @@ class SenseNovaT2IPlugin(Star):
         # 模式管理指令：画 模式 / 画 模式 信息图 / 画 模式 日常
         if rest == "模式" or rest.startswith("模式 "):
             event.stop_event()
-            yield from self._handle_mode_command(event, rest)
+            yield event.plain_result(self._handle_mode_command(rest))
             return
 
         # 冷却检查
@@ -333,31 +333,29 @@ class SenseNovaT2IPlugin(Star):
 
     # ── 模式管理 ──────────────────────────────────────
 
-    def _handle_mode_command(self, event: AstrMessageEvent, rest: str):
-        """处理 '画 模式' 和 '画 模式 <模式名>' 指令。"""
+    def _handle_mode_command(self, rest: str) -> str:
+        """处理 '画 模式' 和 '画 模式 <模式名>' 指令，返回回复文本。"""
         parts = rest.split(maxsplit=1)
         # parts[0] == "模式"
         if len(parts) == 1:
             # 画 模式 → 显示当前模式
             mode_name = MODE_NAMES.get(self._runtime_mode, self._runtime_mode)
-            yield event.plain_result(
+            return (
                 f"当前模式：{mode_name}（{self._runtime_mode}）\n"
                 f"可用模式：通用日常(daily) / 信息图(infographic)\n"
                 f"切换：画 模式 日常  或  画 模式 信息图"
             )
-            return
 
         target = _resolve_mode_alias(parts[1])
         if target is None:
-            yield event.plain_result(
+            return (
                 f"未知模式：{parts[1]}\n"
                 f"可用模式：日常(daily) / 信息图(infographic)"
             )
-            return
 
         self._runtime_mode = target
         mode_name = MODE_NAMES.get(target, target)
-        yield event.plain_result(f"已切换到 {mode_name} 模式（{target}）")
+        return f"已切换到 {mode_name} 模式（{target}）"
 
     # ── 参数解析 ──────────────────────────────────────
 
