@@ -1,0 +1,14 @@
+name: astrbot_plugin_sensenova_t2i
+desc: SenseNova U1 文生图插件 — 调用商汤日日新 sensenova-u1-fast 模型，支持 Prompt 增强、11 种尺寸、多图生成、信息图模式
+version: 0.1.0
+author: konley
+display_name: SenseNova 文生图
+repo: https://github.com/konley/astrbot_plugin_sensenova_t2i
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - telegram
+  - wecom
+  - lark
+  - discord
+astrbot_version: ">=3.5.0"

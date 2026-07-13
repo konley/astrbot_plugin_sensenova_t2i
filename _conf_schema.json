@@ -1,0 +1,92 @@
+{
+  "api_key": {
+    "description": "SenseNova API Key",
+    "type": "string",
+    "default": "",
+    "hint": "在 https://platform.sensenova.cn 控制台创建 API Key，以 sk- 开头"
+  },
+  "ignore_slash": {
+    "description": "忽略指令前的 / 或 # 前缀",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后 /画、#画 和 画 都能触发；关闭后仅无前缀可触发"
+  },
+  "command_keywords": {
+    "description": "触发关键词列表",
+    "type": "list",
+    "default": ["画"],
+    "hint": "消息以这些关键词开头时触发生图，可添加 绘图、生成图片 等"
+  },
+  "cooldown": {
+    "description": "用户冷却时间（秒）",
+    "type": "int",
+    "default": 10,
+    "hint": "同一用户在该时间内重复触发会被拦截，防止刷屏"
+  },
+  "default_size": {
+    "description": "默认图片尺寸",
+    "type": "string",
+    "default": "2752x1536",
+    "hint": "不指定 --size 时使用的默认尺寸。可选: 2048x2048(1:1) 2752x1536(16:9) 1536x2752(9:16) 2496x1664(3:2) 1664x2496(2:3) 2368x1760(4:3) 1760x2368(3:4) 2272x1824(5:4) 1824x2272(4:5) 3072x1376(21:9) 1344x3136(9:21)"
+  },
+  "default_n": {
+    "description": "默认生成数量",
+    "type": "int",
+    "default": 1,
+    "hint": "不指定 --n 时默认生成的图片数量（1-4）"
+  },
+  "timeout": {
+    "description": "API 超时时间（秒）",
+    "type": "int",
+    "default": 180,
+    "hint": "调用 SenseNova API 的超时时间，文生图通常需要 10-30 秒"
+  },
+  "enable_prompt_enhance": {
+    "description": "启用 Prompt 增强",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后调用 AstrBot 主 Provider 对用户简短描述进行扩写优化，再传给 U1 生成图片"
+  },
+  "enhance_system_prompt": {
+    "description": "Prompt 增强系统提示词（留空使用内置默认）",
+    "type": "text",
+    "default": "",
+    "hint": "留空则使用内置默认提示词。自定义时可描述扩写风格、输出格式等要求"
+  },
+  "enhance_max_tokens": {
+    "description": "Prompt 增强最大 token",
+    "type": "int",
+    "default": 2048,
+    "hint": "调用主 Provider 扩写时的 max_tokens 参数"
+  },
+  "default_style_suffix": {
+    "description": "默认风格后缀",
+    "type": "text",
+    "default": "",
+    "hint": "自动追加到 prompt 末尾的风格描述。如：高质量，精细细节，专业构图，8K"
+  },
+  "infographic_mode": {
+    "description": "信息图模式",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后自动在 prompt 前追加信息图结构化模板，适合海报、图表、演示等场景"
+  },
+  "cleanup_delay": {
+    "description": "发送后清理图片延迟（秒）",
+    "type": "int",
+    "default": 10,
+    "hint": "图片发送后延迟多少秒删除临时文件，确保上传完成"
+  },
+  "max_retry": {
+    "description": "失败重试次数",
+    "type": "int",
+    "default": 2,
+    "hint": "API 调用失败时的重试次数（不含首次）"
+  },
+  "rate_limit_cooldown": {
+    "description": "429 限流冷却时间（秒）",
+    "type": "int",
+    "default": 5,
+    "hint": "遇到 429 限流后的等待时间"
+  }
+}
