@@ -212,10 +212,11 @@ class SenseNovaT2IPlugin(Star):
             )
             return
 
-        # 提示生成中
-        yield event.plain_result("正在生成图片，请稍候...")
+        # 所有耗时操作在此完成后，只 yield 最终结果
+        # （不能 yield 进度消息，否则其他插件的 after_message_sent 钩子
+        #   会终止事件传播，导致生成器不再被迭代，后续代码不执行）
 
-        # Prompt 增强
+        # Prompt 增强（带超时保护）
         final_prompt = await self._enhance_prompt(prompt)
         if final_prompt is None:
             final_prompt = prompt
@@ -245,26 +246,23 @@ class SenseNovaT2IPlugin(Star):
         """解析 --size 和 --n 参数，返回 (size, n, prompt)。"""
         size = self.default_size
         n = self.default_n
-        remaining_parts = []
 
-        # 匹配 --size 参数
-        size_match = re.match(
-            r"--size\s+(\S+)", text, re.IGNORECASE
-        )
+        # 匹配 --size 参数（可出现在任意位置）
+        size_match = re.search(r"--size\s+(\S+)", text, re.IGNORECASE)
         if size_match:
             size_val = size_match.group(1)
             size = self._resolve_size(size_val)
             text = text[: size_match.start()] + text[size_match.end():]
 
         # 匹配 -s 短参数
-        s_match = re.match(r"-s\s+(\S+)", text, re.IGNORECASE)
+        s_match = re.search(r"-s\s+(\S+)", text, re.IGNORECASE)
         if s_match:
             size_val = s_match.group(1)
             size = self._resolve_size(size_val)
             text = text[: s_match.start()] + text[s_match.end():]
 
         # 匹配 --n 参数
-        n_match = re.match(r"--n\s+(\d+)", text, re.IGNORECASE)
+        n_match = re.search(r"--n\s+(\d+)", text, re.IGNORECASE)
         if n_match:
             n = max(1, min(4, int(n_match.group(1))))
             text = text[: n_match.start()] + text[n_match.end():]
@@ -308,10 +306,13 @@ class SenseNovaT2IPlugin(Star):
             return None
 
         try:
-            llm_resp = await provider.text_chat(
-                prompt=prompt,
-                system_prompt=self.enhance_system_prompt,
-                max_tokens=self.enhance_max_tokens,
+            llm_resp = await asyncio.wait_for(
+                provider.text_chat(
+                    prompt=prompt,
+                    system_prompt=self.enhance_system_prompt,
+                    max_tokens=self.enhance_max_tokens,
+                ),
+                timeout=60,
             )
             enhanced = (llm_resp.completion_text or "").strip()
             if enhanced:
@@ -437,9 +438,13 @@ class SenseNovaT2IPlugin(Star):
             yield event.plain_result("图片下载失败，请稍后重试")
             return
 
-        # 逐张发送
+        # 合并所有图片到一条消息发送
+        # （不能多次 yield，否则其他插件的 after_message_sent 钩子
+        #   会在第一次 yield 后终止事件传播，后续图片不会发送）
+        chain = []
         for path in local_paths:
-            yield event.chain_result([Comp.Image(file=str(path))])
+            chain.append(Comp.Image(file=str(path)))
+        yield event.chain_result(chain)
 
         # 延迟清理
         paths_to_clean = list(local_paths)
