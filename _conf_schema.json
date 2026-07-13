@@ -41,35 +41,47 @@
     "default": 180,
     "hint": "调用 SenseNova API 的超时时间，文生图通常需要 10-30 秒"
   },
+  "default_mode": {
+    "description": "默认生成模式",
+    "type": "string",
+    "default": "daily",
+    "hint": "启动时的默认模式。daily=通用日常（自动适配风格），infographic=信息图（优化排版布局）。运行时可用 '画 模式 信息图' 指令切换"
+  },
   "enable_prompt_enhance": {
     "description": "启用 Prompt 增强",
     "type": "bool",
     "default": true,
     "hint": "开启后调用 AstrBot 主 Provider 对用户简短描述进行扩写优化，再传给 U1 生成图片"
   },
-  "enhance_system_prompt": {
-    "description": "Prompt 增强系统提示词（留空使用内置默认）",
+  "daily_enhance_prompt": {
+    "description": "日常模式 — 增强系统提示词（留空使用内置默认）",
     "type": "text",
     "default": "",
-    "hint": "留空则使用内置默认提示词。自定义时可描述扩写风格、输出格式等要求"
+    "hint": "日常模式下调用主 Provider 扩写时使用的系统提示词。留空使用内置「万能大师」默认提示词（自动适配写实/插画/信息图等风格）"
+  },
+  "daily_style_suffix": {
+    "description": "日常模式 — 风格后缀",
+    "type": "text",
+    "default": "",
+    "hint": "日常模式下自动追加到 prompt 末尾的风格描述。留空使用内置默认：高质量，精细细节，专业构图，画面锐利清晰"
+  },
+  "infographic_enhance_prompt": {
+    "description": "信息图模式 — 增强系统提示词（留空使用内置默认）",
+    "type": "text",
+    "default": "",
+    "hint": "信息图模式下调用主 Provider 扩写时使用的系统提示词。留空使用内置信息图专精默认提示词（自动设计布局/配色/字体风格）"
+  },
+  "infographic_style_suffix": {
+    "description": "信息图模式 — 风格后缀",
+    "type": "text",
+    "default": "",
+    "hint": "信息图模式下自动追加到 prompt 末尾的风格描述。留空使用内置默认：排版精准对齐，文字清晰可读，视觉层次分明"
   },
   "enhance_max_tokens": {
     "description": "Prompt 增强最大 token",
     "type": "int",
     "default": 2048,
     "hint": "调用主 Provider 扩写时的 max_tokens 参数"
-  },
-  "default_style_suffix": {
-    "description": "默认风格后缀",
-    "type": "text",
-    "default": "",
-    "hint": "自动追加到 prompt 末尾的风格描述。如：高质量，精细细节，专业构图，8K"
-  },
-  "infographic_mode": {
-    "description": "信息图模式",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后自动在 prompt 前追加信息图结构化模板，适合海报、图表、演示等场景"
   },
   "cleanup_delay": {
     "description": "发送后清理图片延迟（秒）",

@@ -1,7 +1,8 @@
 """SenseNova U1 文生图插件
 
 调用商汤日日新 sensenova-u1-fast 模型生成图片。
-支持 Prompt 增强（调用 AstrBot 主 Provider）、11 种固定尺寸、多图生成、信息图模式。
+支持双模式（通用日常 / 信息图）、Prompt 增强、11 种尺寸、多图生成。
+模式可通过 WebUI 配置或指令切换。
 """
 
 import asyncio
@@ -40,16 +41,51 @@ SIZE_MAP = {
 
 ALL_SIZES = sorted(set(SIZE_MAP.values()))
 
-DEFAULT_ENHANCE_PROMPT = (
-    "你是一个专业的图像提示词工程师。用户会给你一段简短的图片描述，"
-    "请将其扩写为结构化的高质量图像生成提示词。\n"
-    "要求：\n"
-    "1. 保留用户原始意图，不要改变核心内容\n"
-    "2. 补充构图布局、光影配色、风格细节、画面氛围\n"
-    "3. 用中文输出，不要解释，直接输出增强后的提示词\n"
-    "4. 不要使用任何 Markdown 格式\n"
-    "5. 如果用户描述的是信息图/海报/图表场景，请补充布局结构描述"
+# ── 双模式定义 ────────────────────────────────────────────
+
+MODE_DAILY = "daily"
+MODE_INFOGRAPHIC = "infographic"
+VALID_MODES = {MODE_DAILY, MODE_INFOGRAPHIC}
+
+MODE_NAMES = {
+    MODE_DAILY: "通用日常",
+    MODE_INFOGRAPHIC: "信息图",
+}
+
+# 通用日常模式 — 内置 Prompt 增强系统提示词（万能大师）
+DEFAULT_DAILY_ENHANCE_PROMPT = (
+    "你是一个顶级 AI 绘画提示词工程师。将用户的简短描述扩写为高质量图像生成提示词。\n"
+    "规则：\n"
+    "1. 分析用户内容，自动判断最适合的风格（写实/插画/信息图/概念艺术等）\n"
+    "2. 保留用户原始意图\n"
+    "3. 补充：主体细节、构图布局、光影配色、画面氛围、艺术风格\n"
+    "4. 信息图/海报场景：补充布局结构、分区、配色逻辑\n"
+    "5. 写实场景：补充镜头、光线、材质、景深\n"
+    "6. 插画场景：补充画风、配色、氛围\n"
+    "7. 用中文输出，不要解释，直接输出提示词\n"
+    "8. 不要使用 Markdown 格式\n"
+    "9. 200-300字"
 )
+
+DEFAULT_DAILY_STYLE_SUFFIX = "高质量，精细细节，专业构图，画面锐利清晰"
+
+# 信息图模式 — 内置 Prompt 增强系统提示词
+DEFAULT_INFOGRAPHIC_ENHANCE_PROMPT = (
+    "你是一个专业的信息图设计师和 AI 绘画提示词工程师。"
+    "将用户的简短描述扩写为信息图/海报风格的图像生成提示词。\n"
+    "扩写要求：\n"
+    "1. 分析用户内容，自动设计布局结构（三列网格/时间线/对比布局/流程图等）\n"
+    "2. 明确描述每个区域的内容、位置和视觉层级\n"
+    "3. 补充配色方案：主色、辅色、强调色\n"
+    "4. 补充视觉元素：图标、装饰线、背景纹理\n"
+    "5. 补充字体风格描述：标题用粗体无衬线，正文用等宽字体等\n"
+    "6. 描述整体视觉风格：科技感/扁平化/商务风/活泼风\n"
+    "7. 用中文输出，不要解释，直接输出提示词\n"
+    "8. 不要使用 Markdown 格式\n"
+    "9. 控制在 300 字以内，确保布局描述清晰可执行"
+)
+
+DEFAULT_INFOGRAPHIC_STYLE_SUFFIX = "排版精准对齐，文字清晰可读，视觉层次分明"
 
 INFOGRAPHIC_PREFIX = (
     "请以信息图（Infographic）的风格生成以下内容，"
@@ -63,16 +99,22 @@ HELP_TEXT = (
     "  --size <尺寸>   指定图片尺寸（默认 16:9）\n"
     "                  比例简写: 1:1 16:9 9:16 3:2 2:3 4:3 3:4 5:4 4:5 21:9 9:21\n"
     "                  或直接像素: 2048x2048 2752x1536 等\n"
-    "  --n <数量>      生成数量（1-4，默认 1）\n\n"
+    "  --n <数量>      生成数量（1-4，默认 1）\n"
+    "  --mode <模式>   本次生成模式：daily(日常) / info(信息图)\n"
+    "                  不指定则使用当前默认模式\n\n"
+    "模式切换:\n"
+    "  画 模式              查看当前模式\n"
+    "  画 模式 日常          切换到通用日常模式\n"
+    "  画 模式 信息图        切换到信息图模式\n\n"
     "示例:\n"
     "  画 一只可爱的猫咪坐在彩虹上\n"
     "  画 --size 1:1 卡通头像\n"
-    "  画 --size 9:16 --n 2 赛博朋克城市夜景\n"
-    "  画 信息图：2026年AI发展趋势，三列布局，深蓝科技风\n\n"
+    "  画 --mode info --size 16:9 2026年AI发展趋势\n"
+    "  画 --size 9:16 --n 2 赛博朋克城市夜景\n\n"
     "提示:\n"
-    "  - 详细描述效果更好：主题+构图+配色+风格\n"
-    "  - 信息图场景建议描述布局结构\n"
-    "  - WebUI 可配置 Prompt 增强、默认尺寸等"
+    "  - 日常模式：自动适配风格，适合画猫画狗画风景\n"
+    "  - 信息图模式：优化排版布局，适合海报/图表/知识图\n"
+    "  - WebUI 可配置双模式的增强提示词和风格后缀"
 )
 
 
@@ -88,11 +130,27 @@ def _parse_keywords(value, default: list[str]) -> list[str]:
     return list(default)
 
 
+def _resolve_mode_alias(val: str) -> str | None:
+    """解析模式别名，返回标准模式名或 None。"""
+    val = val.strip().lower()
+    aliases = {
+        "daily": MODE_DAILY,
+        "日常": MODE_DAILY,
+        "通用": MODE_DAILY,
+        "通用日常": MODE_DAILY,
+        "infographic": MODE_INFOGRAPHIC,
+        "info": MODE_INFOGRAPHIC,
+        "信息图": MODE_INFOGRAPHIC,
+        "海报": MODE_INFOGRAPHIC,
+    }
+    return aliases.get(val)
+
+
 @register(
     "astrbot_plugin_sensenova_t2i",
     "konley",
-    "SenseNova U1 文生图 — 调用商汤日日新 sensenova-u1-fast 模型，支持 Prompt 增强、11 种尺寸、多图生成、信息图模式",
-    "0.1.0",
+    "SenseNova U1 文生图 — 双模式（通用日常/信息图）、Prompt 增强、11 种尺寸、多图生成",
+    "0.2.0",
 )
 class SenseNovaT2IPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
@@ -112,20 +170,33 @@ class SenseNovaT2IPlugin(Star):
         self.default_n: int = max(1, min(4, int(config.get("default_n", 1))))
         self.timeout: int = int(config.get("timeout", 180))
 
-        # Prompt 增强
+        # 双模式配置
+        self.default_mode: str = str(config.get("default_mode", MODE_DAILY)).strip().lower()
+        if self.default_mode not in VALID_MODES:
+            self.default_mode = MODE_DAILY
+        # 运行时默认模式（可被指令修改）
+        self._runtime_mode: str = self.default_mode
+
+        # 日常模式 Prompt 增强
         self.enable_prompt_enhance: bool = bool(
             config.get("enable_prompt_enhance", True)
         )
-        self.enhance_system_prompt: str = (
-            config.get("enhance_system_prompt") or DEFAULT_ENHANCE_PROMPT
+        self.daily_enhance_prompt: str = (
+            config.get("daily_enhance_prompt") or DEFAULT_DAILY_ENHANCE_PROMPT
         )
-        self.enhance_max_tokens: int = int(config.get("enhance_max_tokens", 2048))
-
-        # 默认参数模板
-        self.default_style_suffix: str = str(
-            config.get("default_style_suffix", "")
+        self.daily_style_suffix: str = str(
+            config.get("daily_style_suffix") or DEFAULT_DAILY_STYLE_SUFFIX
         ).strip()
-        self.infographic_mode: bool = bool(config.get("infographic_mode", False))
+
+        # 信息图模式 Prompt 增强
+        self.infographic_enhance_prompt: str = (
+            config.get("infographic_enhance_prompt") or DEFAULT_INFOGRAPHIC_ENHANCE_PROMPT
+        )
+        self.infographic_style_suffix: str = str(
+            config.get("infographic_style_suffix") or DEFAULT_INFOGRAPHIC_STYLE_SUFFIX
+        ).strip()
+
+        self.enhance_max_tokens: int = int(config.get("enhance_max_tokens", 2048))
 
         # 运维配置
         self.cleanup_delay: int = int(config.get("cleanup_delay", 10))
@@ -143,6 +214,20 @@ class SenseNovaT2IPlugin(Star):
 
         # 启动时清理残留临时文件
         self._cleanup_stale_tempfiles()
+
+    # ── 模式工具方法 ──────────────────────────────────
+
+    def _get_mode_prompt(self, mode: str) -> str:
+        """获取指定模式的增强系统提示词。"""
+        if mode == MODE_INFOGRAPHIC:
+            return self.infographic_enhance_prompt
+        return self.daily_enhance_prompt
+
+    def _get_mode_suffix(self, mode: str) -> str:
+        """获取指定模式的风格后缀。"""
+        if mode == MODE_INFOGRAPHIC:
+            return self.infographic_style_suffix
+        return self.daily_style_suffix
 
     # ── 主入口 ────────────────────────────────────────
 
@@ -183,6 +268,12 @@ class SenseNovaT2IPlugin(Star):
             yield event.plain_result(HELP_TEXT)
             return
 
+        # 模式管理指令：画 模式 / 画 模式 信息图 / 画 模式 日常
+        if rest == "模式" or rest.startswith("模式 "):
+            event.stop_event()
+            yield from self._handle_mode_command(event, rest)
+            return
+
         # 冷却检查
         user_id = event.get_sender_id()
         now = time.time()
@@ -198,8 +289,8 @@ class SenseNovaT2IPlugin(Star):
 
         event.stop_event()
 
-        # 解析 --size 和 --n 参数
-        size, n, prompt = self._parse_args(rest)
+        # 解析 --size, --n, --mode 参数
+        size, n, mode, prompt = self._parse_args(rest)
 
         if not prompt:
             yield event.plain_result("请输入图片描述\n用法: 画 <描述>\n输入 画帮助 查看完整用法")
@@ -217,15 +308,15 @@ class SenseNovaT2IPlugin(Star):
         #   会终止事件传播，导致生成器不再被迭代，后续代码不执行）
 
         # Prompt 增强（带超时保护）
-        final_prompt = await self._enhance_prompt(prompt)
+        final_prompt = await self._enhance_prompt(prompt, mode)
         if final_prompt is None:
             final_prompt = prompt
 
-        # 应用默认参数模板
-        final_prompt = self._apply_template(final_prompt)
+        # 应用模式模板
+        final_prompt = self._apply_template(final_prompt, mode)
 
         logger.info(
-            f"[sensenova_t2i] 生成图片: size={size}, n={n}, "
+            f"[sensenova_t2i] 生成图片: mode={mode}, size={size}, n={n}, "
             f"prompt={final_prompt[:100]}..."
         )
 
@@ -240,25 +331,52 @@ class SenseNovaT2IPlugin(Star):
         async for r in self._download_and_send(event, image_urls):
             yield r
 
+    # ── 模式管理 ──────────────────────────────────────
+
+    def _handle_mode_command(self, event: AstrMessageEvent, rest: str):
+        """处理 '画 模式' 和 '画 模式 <模式名>' 指令。"""
+        parts = rest.split(maxsplit=1)
+        # parts[0] == "模式"
+        if len(parts) == 1:
+            # 画 模式 → 显示当前模式
+            mode_name = MODE_NAMES.get(self._runtime_mode, self._runtime_mode)
+            yield event.plain_result(
+                f"当前模式：{mode_name}（{self._runtime_mode}）\n"
+                f"可用模式：通用日常(daily) / 信息图(infographic)\n"
+                f"切换：画 模式 日常  或  画 模式 信息图"
+            )
+            return
+
+        target = _resolve_mode_alias(parts[1])
+        if target is None:
+            yield event.plain_result(
+                f"未知模式：{parts[1]}\n"
+                f"可用模式：日常(daily) / 信息图(infographic)"
+            )
+            return
+
+        self._runtime_mode = target
+        mode_name = MODE_NAMES.get(target, target)
+        yield event.plain_result(f"已切换到 {mode_name} 模式（{target}）")
+
     # ── 参数解析 ──────────────────────────────────────
 
-    def _parse_args(self, text: str) -> tuple[str, int, str]:
-        """解析 --size 和 --n 参数，返回 (size, n, prompt)。"""
+    def _parse_args(self, text: str) -> tuple[str, int, str, str]:
+        """解析 --size, --n, --mode 参数，返回 (size, n, mode, prompt)。"""
         size = self.default_size
         n = self.default_n
+        mode = self._runtime_mode
 
         # 匹配 --size 参数（可出现在任意位置）
         size_match = re.search(r"--size\s+(\S+)", text, re.IGNORECASE)
         if size_match:
-            size_val = size_match.group(1)
-            size = self._resolve_size(size_val)
+            size = self._resolve_size(size_match.group(1))
             text = text[: size_match.start()] + text[size_match.end():]
 
         # 匹配 -s 短参数
         s_match = re.search(r"-s\s+(\S+)", text, re.IGNORECASE)
         if s_match:
-            size_val = s_match.group(1)
-            size = self._resolve_size(size_val)
+            size = self._resolve_size(s_match.group(1))
             text = text[: s_match.start()] + text[s_match.end():]
 
         # 匹配 --n 参数
@@ -267,8 +385,16 @@ class SenseNovaT2IPlugin(Star):
             n = max(1, min(4, int(n_match.group(1))))
             text = text[: n_match.start()] + text[n_match.end():]
 
+        # 匹配 --mode 参数
+        mode_match = re.search(r"--mode\s+(\S+)", text, re.IGNORECASE)
+        if mode_match:
+            resolved = _resolve_mode_alias(mode_match.group(1))
+            if resolved:
+                mode = resolved
+            text = text[: mode_match.start()] + text[mode_match.end():]
+
         prompt = text.strip()
-        return size, n, prompt
+        return size, n, mode, prompt
 
     @staticmethod
     def _resolve_size(size_val: str) -> str:
@@ -295,7 +421,7 @@ class SenseNovaT2IPlugin(Star):
 
     # ── Prompt 增强 ────────────────────────────────────
 
-    async def _enhance_prompt(self, prompt: str) -> str | None:
+    async def _enhance_prompt(self, prompt: str, mode: str) -> str | None:
         """调用 AstrBot 主 Provider 对 prompt 进行扩写增强。"""
         if not self.enable_prompt_enhance:
             return None
@@ -305,11 +431,13 @@ class SenseNovaT2IPlugin(Star):
             logger.warning("[sensenova_t2i] 未配置大模型提供商，跳过 Prompt 增强")
             return None
 
+        system_prompt = self._get_mode_prompt(mode)
+
         try:
             llm_resp = await asyncio.wait_for(
                 provider.text_chat(
                     prompt=prompt,
-                    system_prompt=self.enhance_system_prompt,
+                    system_prompt=system_prompt,
                     max_tokens=self.enhance_max_tokens,
                 ),
                 timeout=60,
@@ -317,7 +445,7 @@ class SenseNovaT2IPlugin(Star):
             enhanced = (llm_resp.completion_text or "").strip()
             if enhanced:
                 logger.info(
-                    f"[sensenova_t2i] Prompt 增强: {prompt[:50]} -> {enhanced[:50]}..."
+                    f"[sensenova_t2i] Prompt 增强({mode}): {prompt[:50]} -> {enhanced[:50]}..."
                 )
                 return enhanced
         except Exception as e:
@@ -325,15 +453,16 @@ class SenseNovaT2IPlugin(Star):
 
         return None
 
-    def _apply_template(self, prompt: str) -> str:
-        """应用默认参数模板（风格后缀 + 信息图模式）。"""
+    def _apply_template(self, prompt: str, mode: str) -> str:
+        """应用模式模板（信息图前缀 + 风格后缀）。"""
         result = prompt
 
-        if self.infographic_mode:
+        if mode == MODE_INFOGRAPHIC:
             result = INFOGRAPHIC_PREFIX + result
 
-        if self.default_style_suffix:
-            result = result + " " + self.default_style_suffix
+        suffix = self._get_mode_suffix(mode)
+        if suffix:
+            result = result + " " + suffix
 
         return result
 
@@ -439,8 +568,6 @@ class SenseNovaT2IPlugin(Star):
             return
 
         # 合并所有图片到一条消息发送
-        # （不能多次 yield，否则其他插件的 after_message_sent 钩子
-        #   会在第一次 yield 后终止事件传播，后续图片不会发送）
         chain = []
         for path in local_paths:
             chain.append(Comp.Image(file=str(path)))
