@@ -464,14 +464,18 @@ class SenseNovaT2IPlugin(Star):
 
     @staticmethod
     async def _download_image(url: str, path: str) -> bool:
-        """异步下载图片到本地。"""
+        """异步下载图片到本地。
+
+        SenseNova 返回的是 S3 presigned URL，aiohttp 默认会对 URL 重新编码
+        导致签名不匹配（SignatureDoesNotMatch 403）。
+        使用 yarl.URL(encoded=True) 跳过重新编码。
+        """
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            }
-            async with aiohttp.ClientSession(headers=headers) as session:
+            from yarl import URL
+            encoded_url = URL(url, encoded=True)
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=60)
+                    encoded_url, timeout=aiohttp.ClientTimeout(total=60)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.read()
